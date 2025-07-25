@@ -1,7 +1,7 @@
 {
   "name": "vscode-thru-hex-editor",
   "displayName": "Auto Hex Editor",
-  "description": "Automatically open files without extensions using VS Code's built-in Hex Editor",
+  "description": "Automatically open binary files with VS Code's built-in Hex Editor",
   "version": "0.1.0",
   "publisher": "your-publisher-name",
   "engines": {
@@ -20,7 +20,7 @@
         "autoHexEditor.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable automatic hex editor for files without extensions"
+          "description": "Enable automatic hex editor for binary files"
         },
         "autoHexEditor.showNotification": {
           "type": "boolean",
@@ -39,7 +39,6 @@
       "explorer/context": [
         {
           "command": "autoHexEditor.openWithHexEditor",
-          "when": "resourceExtname == ''",
           "group": "navigation"
         }
       ]
