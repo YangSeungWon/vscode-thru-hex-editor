@@ -1,0 +1,58 @@
+{
+  "name": "vscode-thru-hex-editor",
+  "displayName": "Auto Hex Editor",
+  "description": "Automatically open files without extensions using VS Code's built-in Hex Editor",
+  "version": "0.1.0",
+  "publisher": "your-publisher-name",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onStartupFinished",
+    "onFileSystem:file"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Auto Hex Editor",
+      "properties": {
+        "autoHexEditor.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic hex editor for files without extensions"
+        },
+        "autoHexEditor.showNotification": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notification when binary files cannot be automatically opened with hex editor"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "autoHexEditor.openWithHexEditor",
+        "title": "Open with Hex Editor"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "autoHexEditor.openWithHexEditor",
+          "when": "resourceExtname == ''",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.70.0",
+    "@types/node": "16.x",
+    "typescript": "^5.1.3"
+  }
+}
