@@ -2,7 +2,7 @@
   "name": "vscode-thru-hex-editor",
   "displayName": "Auto Hex Editor",
   "description": "Automatically open binary files with VS Code's built-in Hex Editor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "your-publisher-name",
   "engines": {
     "vscode": "^1.70.0"

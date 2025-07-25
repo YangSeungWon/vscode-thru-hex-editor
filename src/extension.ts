@@ -13,8 +13,7 @@ function log(message: string, ...args: any[]) {
 
 export function activate(context: vscode.ExtensionContext) {
     log('Auto Hex Editor extension is now active!');
-    outputChannel.show(true); // Show output panel but don't steal focus
-
+    
     // Configuration
     let config = vscode.workspace.getConfiguration('autoHexEditor');
     let isEnabled = config.get<boolean>('enabled', true);
@@ -33,6 +32,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Track already processed URIs to avoid loops
     const processedUris = new Map<string, number>(); // URI -> timestamp
+    let isProcessingFile = false;
 
     // Register command to open with hex editor
     context.subscriptions.push(
@@ -52,71 +52,92 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // Watch for tab changes to detect binary files
-    let lastActiveTab: vscode.Tab | undefined;
-    
+    // Watch for tab changes - this is the main detection mechanism
     context.subscriptions.push(
         vscode.window.tabGroups.onDidChangeTabs(async (event) => {
-            const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
-            
-            if (!activeTab || !isEnabled) return;
-            
-            // Check if the tab changed
-            if (lastActiveTab?.input === activeTab.input) return;
-            lastActiveTab = activeTab;
+            if (!isEnabled || isProcessingFile) return;
 
-            // Check if it's a file input
+            // Get the active tab
+            const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
+            if (!activeTab) return;
+
+            // Check if it's a file
             const input = activeTab.input;
-            if (!(input instanceof vscode.TabInputText) && 
-                !(input instanceof vscode.TabInputCustom) &&
-                !(input instanceof vscode.TabInputNotebook)) {
+            if (!(input instanceof vscode.TabInputText || 
+                  input instanceof vscode.TabInputCustom ||
+                  input instanceof vscode.TabInputNotebook)) {
                 return;
             }
 
-            // Get the URI
             const uri = (input as any).uri;
             if (!uri || uri.scheme !== 'file') return;
 
             const fileName = path.basename(uri.fsPath);
-            log(`Tab changed to: ${fileName}`);
+            
+            // Check if this file was already processed recently
+            const now = Date.now();
+            const lastProcessed = processedUris.get(uri.toString());
+            if (lastProcessed && now - lastProcessed < 5000) {
+                return;
+            }
 
-            // Wait a bit to see if a text editor opens for this file
+            log(`Tab activated: ${fileName}`);
+
+            // Wait for VS Code to attempt opening the file
             setTimeout(async () => {
-                // Check if there's no text editor for this file (meaning VS Code couldn't open it as text)
+                // Check if the tab is still active and same file
+                const currentActiveTab = vscode.window.tabGroups.activeTabGroup.activeTab;
+                if (!currentActiveTab) {
+                    log(`No active tab, skipping check for: ${fileName}`);
+                    return;
+                }
+                
+                // Check if it's still the same file
+                const currentInput = currentActiveTab.input;
+                const currentUri = (currentInput as any).uri;
+                if (!currentUri || currentUri.toString() !== uri.toString()) {
+                    log(`Tab changed to different file, skipping check for: ${fileName}`);
+                    return;
+                }
+
+                // Debug: Log all visible text editors
+                log(`Checking text editors for ${fileName}...`);
+                log(`File URI: ${uri.toString()}`);
+                log(`File path: ${uri.fsPath}`);
+                log(`Visible text editors count: ${vscode.window.visibleTextEditors.length}`);
+                vscode.window.visibleTextEditors.forEach(editor => {
+                    log(`  - Editor: ${path.basename(editor.document.fileName)} (${editor.document.uri.toString()})`);
+                });
+
+                // Check if there's a text editor for this file
                 const hasTextEditor = vscode.window.visibleTextEditors.some(
                     editor => editor.document.uri.toString() === uri.toString()
                 );
 
-                // Also check if the current tab is still the same one
-                const currentTab = vscode.window.tabGroups.activeTabGroup.activeTab;
-                const isSameTab = currentTab && currentTab.input === input;
+                log(`Has text editor for ${fileName}: ${hasTextEditor}`);
 
-                if (!hasTextEditor && isSameTab) {
-                    log(`Binary file detected (no text editor available): ${fileName}`);
-
-                    // Check if already opened as hex within last 2 seconds (to prevent loops)
-                    const now = Date.now();
-                    const lastProcessed = processedUris.get(uri.toString());
-                    if (lastProcessed && now - lastProcessed < 2000) {
-                        log(`Recently processed, skipping: ${fileName}`);
-                        return;
-                    }
-
-                    // Mark as processed with timestamp
-                    processedUris.set(uri.toString(), now);
-
-                    // Automatically open with Hex Editor
-                    log(`Automatically opening ${fileName} with Hex Editor...`);
+                // If no text editor exists, it's a binary file (VS Code shows the warning)
+                if (!hasTextEditor) {
+                    log(`Binary file confirmed (no text editor): ${fileName}`);
                     
+                    // Mark as processed
+                    processedUris.set(uri.toString(), now);
+                    isProcessingFile = true;
+
                     try {
+                        log(`Opening ${fileName} with Hex Editor...`);
                         await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
                         await vscode.commands.executeCommand('vscode.openWith', uri, 'hexEditor.hexedit');
                         log(`Successfully opened ${fileName} with Hex Editor`);
                     } catch (error) {
                         log(`Error opening with hex editor: ${error}`);
+                    } finally {
+                        isProcessingFile = false;
                     }
+                } else {
+                    log(`Text editor found for ${fileName}, not a binary file`);
                 }
-            }, 300); // Wait 300ms to ensure VS Code has tried to open the file
+            }, 300); // Reduced delay for better responsiveness
         })
     );
 
@@ -138,6 +159,23 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(statusBarItem);
+
+    // Clean up old entries periodically
+    const cleanupInterval = setInterval(() => {
+        const now = Date.now();
+        const oldEntries: string[] = [];
+        processedUris.forEach((timestamp, uri) => {
+            if (now - timestamp > 60000) { // Remove entries older than 1 minute
+                oldEntries.push(uri);
+            }
+        });
+        oldEntries.forEach(uri => processedUris.delete(uri));
+    }, 30000); // Clean up every 30 seconds
+
+    // Clean up interval on deactivate
+    context.subscriptions.push({
+        dispose: () => clearInterval(cleanupInterval)
+    });
 }
 
 export function deactivate() {
